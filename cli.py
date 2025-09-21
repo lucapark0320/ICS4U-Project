@@ -1,10 +1,4 @@
-"""
-cli.py — 콘솔 계산기 (Phase 1)
-사용 예:
-  python cli.py eval "engine.sin(30)+engine.sqrt(9)+engine.PI"
-  python cli.py quad 1 -3 2
-  python cli.py cubic 1 0 -1 0
-"""
+
 import argparse
 import engine
 import equations
@@ -24,7 +18,6 @@ def main():
 
     args = p.parse_args()
     if args.cmd == "eval":
-        # 안전을 위해 __builtins__ 제거, engine 네임스페이스만 허용
         val = eval(args.expr, {"__builtins__": {}}, vars(engine))
         print("=", val)
     elif args.cmd == "quad":
