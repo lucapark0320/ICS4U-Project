@@ -1,16 +1,10 @@
-"""
-gui.py — Tkinter GUI (Shift 버튼 토글 + Shift 키 바인딩)
-- 숫자/사칙/괄호/= 버튼
-- π↔e, √↔³√, x²↔x³, !↔x^y, log10↔log_b(팝업), sin/cos/tan↔asin/acos/atan (Shift)
-- eqn 버튼: 이차/삼차 방정식 해
-"""
+
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 import engine
 import equations
 import re
 
-# 안전 평가: engine 네임스페이스만 허용
 def eval_safe(expr: str):
     return eval(expr, {"__builtins__": {}}, vars(engine))
 
@@ -23,13 +17,13 @@ def set_text(entry: ttk.Entry, s: str) -> None:
 def insert(entry: ttk.Entry, s: str) -> None:
     entry.insert(tk.END, s)
 
-# 마지막 "원자" 토큰(숫자, pi/e, 닫는 괄호, 함수호출 등) 범위를 찾아주는 정규식
+
 ATOM_RE = re.compile(
     r"(?:"
-    r"[A-Za-z_][A-Za-z_0-9]*\([^()]*\)"  # 함수호출 like sin(30)
-    r"|[A-Za-z_][A-Za-z_0-9]*"           # 식별자 pi, e
-    r"|\d+(?:\.\d+)?"                    # 숫자
-    r"|\)"                               # 닫는 괄호
+    r"[A-Za-z_][A-Za-z_0-9]*\([^()]*\)" 
+    r"|[A-Za-z_][A-Za-z_0-9]*"           
+    r"|\d+(?:\.\d+)?"                  
+    r"|\)"                              
     r")$"
 )
 
@@ -40,7 +34,7 @@ def wrap_last_atom(entry: ttk.Entry, prefix: str, suffix: str = ")") -> bool:
     """
     s = get_text(entry)
     if not s: return False
-    # 1) 닫는 괄호로 끝나는 경우: 괄호쌍 통째로 감싸기
+
     if s.endswith(")"):
         depth = 0
         for i in range(len(s)-1, -1, -1):
@@ -54,7 +48,7 @@ def wrap_last_atom(entry: ttk.Entry, prefix: str, suffix: str = ")") -> bool:
                     insert(entry, suffix)
                     return True
         return False
-    # 2) 그 외: 마지막 원자 토큰 찾기
+
     m = ATOM_RE.search(s)
     if not m:
         return False
@@ -69,21 +63,21 @@ class CalcGUI:
         self.root = root
         root.title("ICS4U Scientific Calculator")
 
-        # Shift 상태 (토글)
+
         self.shift_on = False
 
-        # 표시창
+
         self.display = ttk.Entry(root, font=("SF Mono", 16))
         self.display.grid(row=0, column=0, columnspan=6, sticky="nsew", padx=8, pady=8)
 
-        # 상단 컨트롤: Shift(버튼), C, ⌫
+
         self.shift_btn = ttk.Button(root, text="Shift (Off)", command=self.toggle_shift)
         self.shift_btn.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=4, pady=2)
 
         ttk.Button(root, text="C", command=self.clear).grid(row=1, column=4, sticky="nsew", padx=4, pady=2)
         ttk.Button(root, text="⌫", command=self.backspace).grid(row=1, column=5, sticky="nsew", padx=4, pady=2)
 
-        # (기본라벨, Shift라벨, handler)
+
         self._buttons = []
         rows = [
             [("(", None, self.type_), (")", None, self.type_),
@@ -95,7 +89,7 @@ class CalcGUI:
              ("×", None, self.type_), ("cos", "acos", self.trig_btn), ("x^2", "x^3", self.square_cube_btn)],
             [("1", None, self.type_), ("2", None, self.type_), ("3", None, self.type_),
              ("-", None, self.type_), ("tan", "atan", self.trig_btn), ("=", None, self.equals_btn)],
-            [("0", None, self.type_), (".", None, self.type_), (",", None, self.type_),  # 콤마: log_b 수동 입력 편의
+            [("0", None, self.type_), (".", None, self.type_), (",", None, self.type_),  
              ("+", None, self.type_), ("/", None, self.type_), ("*", None, self.type_)],
         ]
 
@@ -110,7 +104,7 @@ class CalcGUI:
         for i in range(8):
             root.grid_rowconfigure(i, weight=1)
 
-        # 키보드 Shift 키로도 토글 (편의)
+
         root.bind_all("<KeyPress-Shift_L>", self._kb_toggle_shift)
         root.bind_all("<KeyPress-Shift_R>", self._kb_toggle_shift)
 
@@ -123,7 +117,6 @@ class CalcGUI:
         self._refresh_labels()
 
     def _kb_toggle_shift(self, event):
-        # 키보드 Shift 눌렀을 때도 토글 (원하면 주석 처리 가능)
         self.toggle_shift()
 
     # ---------- UI helpers ----------
@@ -148,13 +141,12 @@ class CalcGUI:
 
     # ---------- Handlers ----------
     def type_(self, label, *_):
-        # ×, ÷를 파이썬 연산자로 치환
         if label == "×": label = "*"
         if label == "÷": label = "/"
         insert(self.display, label)
 
     def const_btn(self, *_):
-        # π ↔ e  (엔진에서 pi/e 별칭 지원)
+        # π ↔ e  
         insert(self.display, "pi" if not self.shift_on else "e")
 
     def root_btn(self, *_):
@@ -168,11 +160,10 @@ class CalcGUI:
     def fact_pow_btn(self, *_):
         # ! ↔ x^y
         if not self.shift_on:
-            # 후위 !처럼: 마지막 원자를 factorial(...)로 감싸기
             if not wrap_last_atom(self.display, "factorial("):
                 insert(self.display, "factorial(")  # fallback
         else:
-            insert(self.display, "**")  # 이후 y 입력
+            insert(self.display, "**")  
 
     def trig_btn(self, label, *_):
         # sin/cos/tan ↔ asin/acos/atan
@@ -182,7 +173,6 @@ class CalcGUI:
         if not self.shift_on:
             insert(self.display, "log10(")
         else:
-            # 임의 밑 로그: log_b(value, base)
             try:
                 val = simpledialog.askstring("log_b", "Value x:")
                 base = simpledialog.askstring("log_b", "Base b:")
