@@ -47,3 +47,9 @@ def log_b(x: float, b: float) -> float:
 
 PI = math.pi
 E  = math.e
+<<<<<<< HEAD
+=======
+
+pi = PI
+e = E
+>>>>>>> 789ddf0 (version 1.2)
