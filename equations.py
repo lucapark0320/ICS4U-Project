@@ -1,4 +1,3 @@
-
 import cmath
 
 def solve_quadratic(a, b, c):
