@@ -1,13 +1,13 @@
 """
-gui.py — Tkinter GUI (Phase 2)
+gui.py — Tkinter GUI (Phase 2, 제출용)
 요구사항:
-- 사칙, 괄호
+- 사칙/괄호, = 버튼
 - π, e
 - sqrt, cbrt(³√), x^2, x^3, x^y
 - factorial(!)
 - sin/cos/tan + asin/acos/atan
 - log10 + log_b(임의 밑)
-- Shift 버튼으로 위 기능들 토글
+- Shift 토글로 위 기능들 전환
 - eqn 버튼으로 이차/삼차 방정식 해 구하기
 """
 import tkinter as tk
@@ -15,17 +15,12 @@ from tkinter import ttk, messagebox, simpledialog
 import engine
 import equations
 
-# 유틸: 표시창 문자열에 추가
+# 안전 평가: engine 네임스페이스만 허용
+def eval_safe(expr: str):
+    return eval(expr, {"__builtins__": {}}, vars(engine))
+
 def insert(entry: ttk.Entry, text: str) -> None:
     entry.insert(tk.END, text)
-
-def evaluate_expression(expr: str):
-    """
-    Entry의 식을 평가.
-    - 위험 방지: __builtins__ 제거
-    - engine 모듈의 함수/상수만 허용(sin, sqrt, PI, E, factorial, log_b, ...)
-    """
-    return eval(expr, {"__builtins__": {}}, vars(engine))
 
 class CalcGUI:
     def __init__(self, root: tk.Tk):
@@ -34,17 +29,17 @@ class CalcGUI:
 
         self.shift = tk.BooleanVar(value=False)
 
-        # ── 표시창
+        # 표시창
         self.display = ttk.Entry(root, font=("SF Mono", 16))
         self.display.grid(row=0, column=0, columnspan=6, sticky="nsew", padx=8, pady=8)
 
-        # ── 상단 컨트롤
+        # 상단 컨트롤
         ttk.Checkbutton(root, text="Shift", variable=self.shift,
                         command=self._refresh_labels).grid(row=1, column=0, sticky="ew", padx=4, pady=2)
         ttk.Button(root, text="C", command=self.clear).grid(row=1, column=4, sticky="ew", padx=4, pady=2)
         ttk.Button(root, text="⌫", command=self.backspace).grid(row=1, column=5, sticky="ew", padx=4, pady=2)
 
-        # ── 버튼 정의: (기본라벨, Shift라벨, 핸들러)
+        # (기본라벨, Shift라벨, handler)
         self._buttons = []
         rows = [
             [("(", None, self.type_), (")", None, self.type_),
@@ -56,11 +51,10 @@ class CalcGUI:
              ("×", None, self.type_), ("cos", "acos", self.trig_btn), ("x^2", "x^3", self.square_cube_btn)],
             [("1", None, self.type_), ("2", None, self.type_), ("3", None, self.type_),
              ("-", None, self.type_), ("tan", "atan", self.trig_btn), ("=", None, self.equals_btn)],
-            [("0", None, self.type_), (".", None, self.type_), (",", None, self.type_),  # 콤마는 log_b 수동 입력용
+            [("0", None, self.type_), (".", None, self.type_), (",", None, self.type_),  # 콤마: log_b 수동 입력 편의
              ("+", None, self.type_), ("/", None, self.type_), ("*", None, self.type_)],
         ]
 
-        # ── 배치
         r0 = 2
         for r, row in enumerate(rows, start=r0):
             for c, (pri, alt, handler) in enumerate(row):
@@ -74,7 +68,7 @@ class CalcGUI:
 
         self._refresh_labels()
 
-    # ── 버튼 생성/업데이트
+    # ---------- UI helpers ----------
     def _add_button(self, r, c, primary, alt, handler):
         var = tk.StringVar(value=primary or "")
         btn = ttk.Button(self.root, textvariable=var)
@@ -86,13 +80,6 @@ class CalcGUI:
         for var, primary, alt, _ in self._buttons:
             var.set(alt if (self.shift.get() and alt) else primary)
 
-    # ── 공통 동작
-    def type_(self, label, *_):
-        # ×, ÷를 파이썬 연산자로 치환
-        if label == "×": label = "*"
-        if label == "÷": label = "/"
-        insert(self.display, label)
-
     def clear(self):
         self.display.delete(0, tk.END)
 
@@ -101,42 +88,47 @@ class CalcGUI:
         if s:
             self.display.delete(len(s)-1, tk.END)
 
-    # ── 기능 핸들러
-    def const_btn(self, label, *_):
-        # π ⇄ e
-        insert(self.display, "PI" if not self.shift.get() else "E")
+    # ---------- Handlers ----------
+    def type_(self, label, *_):
+        # ×, ÷를 파이썬 연산자로 치환
+        if label == "×": label = "*"
+        if label == "÷": label = "/"
+        insert(self.display, label)
 
-    def root_btn(self, label, *_):
-        # √ ⇄ ³√
+    def const_btn(self, *_):
+        # π ↔ e  (엔진에서 pi/e 별칭 지원)
+        insert(self.display, "pi" if not self.shift.get() else "e")
+
+    def root_btn(self, *_):
+        # √ ↔ ³√
         insert(self.display, "sqrt(" if not self.shift.get() else "cbrt(")
 
-    def square_cube_btn(self, label, *_):
-        # x^2 ⇄ x^3  → 파이썬 지수연산자는 **
+    def square_cube_btn(self, *_):
+        # x^2 ↔ x^3  → **2 / **3
         insert(self.display, "**2" if not self.shift.get() else "**3")
 
-    def fact_pow_btn(self, label, *_):
-        # ! ⇄ x^y
+    def fact_pow_btn(self, *_):
+        # ! ↔ x^y  (파이썬은 후위 !가 없으므로 factorial( 로 입력)
         if not self.shift.get():
             insert(self.display, "factorial(")
         else:
-            insert(self.display, "**")  # 사용자가 y를 이어서 입력
+            insert(self.display, "**")  # y를 이어서 입력
 
     def trig_btn(self, label, *_):
-        # sin/cos/tan ⇄ asin/acos/atan (DEG 기준, engine에 구현됨)
+        # sin/cos/tan ↔ asin/acos/atan
         insert(self.display, f"{label}(")
 
-    def log_btn(self, label, *_):
+    def log_btn(self, *_):
         if not self.shift.get():
             insert(self.display, "log10(")
         else:
-            # log_b(value, base) 를 바로 구성해 넣을 수도 있고,
-            # 팝업으로 입력 받아 완성해 줄 수도 있음.
+            # 임의 밑 로그: log_b(value, base)
             try:
                 val = simpledialog.askstring("log_b", "Value x:")
                 base = simpledialog.askstring("log_b", "Base b:")
                 if val is None or base is None:
                     return
-                float(val); float(base)  # 형식 체크
+                float(val); float(base)
                 insert(self.display, f"log_b({val}, {base})")
             except Exception:
                 messagebox.showerror("Error", "숫자를 올바르게 입력하세요.")
@@ -144,14 +136,14 @@ class CalcGUI:
     def equals_btn(self, *_):
         expr = self.display.get()
         try:
-            result = evaluate_expression(expr)
+            result = eval_safe(expr)
             self.clear()
             insert(self.display, str(result))
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
     def eqn_btn(self, *_):
-        # 이차/삼차 중 선택
+        # Quadratic? (No = Cubic)
         ans = messagebox.askquestion("eqn", "Quadratic? (No = Cubic)")
         try:
             if ans == "yes":
