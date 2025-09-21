@@ -5,6 +5,7 @@ import engine
 import equations
 import re
 
+# Safe eval: allow only names from engine
 def eval_safe(expr: str):
     return eval(expr, {"__builtins__": {}}, vars(engine))
 
@@ -17,24 +18,20 @@ def set_text(entry: ttk.Entry, s: str) -> None:
 def insert(entry: ttk.Entry, s: str) -> None:
     entry.insert(tk.END, s)
 
-
+# Last "atom" at the end (number, identifier, call, or ')')
 ATOM_RE = re.compile(
     r"(?:"
-    r"[A-Za-z_][A-Za-z_0-9]*\([^()]*\)" 
-    r"|[A-Za-z_][A-Za-z_0-9]*"           
-    r"|\d+(?:\.\d+)?"                  
-    r"|\)"                              
+    r"[A-Za-z_][A-Za-z_0-9]*\([^()]*\)"  # function call like sin(30)
+    r"|[A-Za-z_][A-Za-z_0-9]*"           # identifier like pi, e
+    r"|\d+(?:\.\d+)?"                    # number
+    r"|\)"                               # closing paren
     r")$"
 )
 
 def wrap_last_atom(entry: ttk.Entry, prefix: str, suffix: str = ")") -> bool:
-    """
-    표시창의 맨 끝 '원자'를 prefix+()로 감싼다.
-    예: 5 -> factorial(5),  sin(30) -> factorial(sin(30)),  (2+3) -> factorial((2+3))
-    """
+    """Wrap the trailing atom as prefix(atom)."""
     s = get_text(entry)
     if not s: return False
-
     if s.endswith(")"):
         depth = 0
         for i in range(len(s)-1, -1, -1):
@@ -42,16 +39,14 @@ def wrap_last_atom(entry: ttk.Entry, prefix: str, suffix: str = ")") -> bool:
             elif s[i] == "(":
                 depth -= 1
                 if depth == 0:
-                    j = i  # 매칭 '('
+                    j = i
                     new = s[:j] + f"{prefix}{s[j:]}"
                     set_text(entry, new)
                     insert(entry, suffix)
                     return True
         return False
-
     m = ATOM_RE.search(s)
-    if not m:
-        return False
+    if not m: return False
     start = m.start()
     inner = s[start:]
     new = s[:start] + f"{prefix}{inner}{suffix}"
@@ -63,63 +58,82 @@ class CalcGUI:
         self.root = root
         root.title("ICS4U Scientific Calculator")
 
-
-        self.shift_on = False
-
+        self.shift_held = False
+        self._mouse_shift_active = False
 
         self.display = ttk.Entry(root, font=("SF Mono", 16))
         self.display.grid(row=0, column=0, columnspan=6, sticky="nsew", padx=8, pady=8)
 
-
-        self.shift_btn = ttk.Button(root, text="Shift (Off)", command=self.toggle_shift)
+        # Top controls
+        self.shift_btn = ttk.Button(root, text="Shift")
         self.shift_btn.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=4, pady=2)
+        self.shift_btn.bind("<ButtonPress-1>", self._on_shift_mouse_down)
+        self.shift_btn.bind("<ButtonRelease-1>", self._on_shift_mouse_up)
+        root.bind_all("<ButtonRelease-1>", self._global_mouse_up, add="+")  # release outside
 
         ttk.Button(root, text="C", command=self.clear).grid(row=1, column=4, sticky="nsew", padx=4, pady=2)
         ttk.Button(root, text="⌫", command=self.backspace).grid(row=1, column=5, sticky="nsew", padx=4, pady=2)
 
-
+        # (primary, alt, handler)
         self._buttons = []
         rows = [
             [("(", None, self.type_), (")", None, self.type_),
-             ("π", "e", self.const_btn), ("log10", "log_b", self.log_btn),
-             ("√", "³√", self.root_btn), ("!", "x^y", self.fact_pow_btn)],
+             ("π", "e", self.const_btn), ("log₁₀()", "logₓ()", self.log_btn),
+             ("√", "³√", self.root_btn), ("!", "xʸ", self.fact_pow_btn)],
             [("7", None, self.type_), ("8", None, self.type_), ("9", None, self.type_),
-             ("÷", None, self.type_), ("sin", "asin", self.trig_btn), ("eqn", None, self.eqn_btn)],
+             ("÷", None, self.type_), ("sin", "sin⁻¹", self.trig_btn), ("eqn", None, self.eqn_btn)],
             [("4", None, self.type_), ("5", None, self.type_), ("6", None, self.type_),
-             ("×", None, self.type_), ("cos", "acos", self.trig_btn), ("x^2", "x^3", self.square_cube_btn)],
+             ("×", None, self.type_), ("cos", "cos⁻¹", self.trig_btn), ("x²", "x³", self.square_cube_btn)],
             [("1", None, self.type_), ("2", None, self.type_), ("3", None, self.type_),
-             ("-", None, self.type_), ("tan", "atan", self.trig_btn), ("=", None, self.equals_btn)],
-            [("0", None, self.type_), (".", None, self.type_), (",", None, self.type_),  
+             ("-", None, self.type_), ("tan", "tan⁻¹", self.trig_btn), ("=", None, self.equals_btn)],
+            [("0", None, self.type_), (".", None, self.type_), (",", None, self.type_),
              ("+", None, self.type_), ("/", None, self.type_), ("*", None, self.type_)],
         ]
-
         r0 = 2
         for r, row in enumerate(rows, start=r0):
             for c, (pri, alt, handler) in enumerate(row):
                 self._add_button(r, c, pri, alt, handler)
 
-        # grid stretch
         for i in range(6):
             root.grid_columnconfigure(i, weight=1)
         for i in range(8):
             root.grid_rowconfigure(i, weight=1)
 
-
-        root.bind_all("<KeyPress-Shift_L>", self._kb_toggle_shift)
-        root.bind_all("<KeyPress-Shift_R>", self._kb_toggle_shift)
+        # Keyboard Shift
+        root.bind_all("<KeyPress-Shift_L>", self._on_kb_shift_down)
+        root.bind_all("<KeyPress-Shift_R>", self._on_kb_shift_down)
+        root.bind_all("<KeyRelease-Shift_L>", self._on_kb_shift_up)
+        root.bind_all("<KeyRelease-Shift_R>", self._on_kb_shift_up)
 
         self._refresh_labels()
 
-    # ---------- Shift ----------
-    def toggle_shift(self, *_):
-        self.shift_on = not self.shift_on
-        self.shift_btn.config(text=f"Shift ({'On' if self.shift_on else 'Off'})")
-        self._refresh_labels()
+    # Shift (hold)
+    def _set_shift(self, held: bool):
+        if self.shift_held != held:
+            self.shift_held = held
+            self.shift_btn.config(text=f"Shift{' (held)' if held else ''}")
+            self._refresh_labels()
 
-    def _kb_toggle_shift(self, event):
-        self.toggle_shift()
+    def _on_shift_mouse_down(self, _):
+        self._mouse_shift_active = True
+        self._set_shift(True)
 
-    # ---------- UI helpers ----------
+    def _on_shift_mouse_up(self, _):
+        self._mouse_shift_active = False
+        self._set_shift(False)
+
+    def _global_mouse_up(self, _):
+        if self._mouse_shift_active:
+            self._mouse_shift_active = False
+            self._set_shift(False)
+
+    def _on_kb_shift_down(self, _):
+        self._set_shift(True)
+
+    def _on_kb_shift_up(self, _):
+        self._set_shift(False)
+
+    # UI helpers
     def _add_button(self, r, c, primary, alt, handler):
         var = tk.StringVar(value=primary or "")
         btn = ttk.Button(self.root, textvariable=var)
@@ -129,7 +143,7 @@ class CalcGUI:
 
     def _refresh_labels(self):
         for var, primary, alt, _ in self._buttons:
-            var.set(alt if (self.shift_on and alt) else primary)
+            var.set(alt if (self.shift_held and alt) else primary)
 
     def clear(self):
         set_text(self.display, "")
@@ -139,52 +153,48 @@ class CalcGUI:
         if s:
             set_text(self.display, s[:-1])
 
-    # ---------- Handlers ----------
+    # Handlers
     def type_(self, label, *_):
         if label == "×": label = "*"
         if label == "÷": label = "/"
         insert(self.display, label)
 
     def const_btn(self, *_):
-        # π ↔ e  
-        insert(self.display, "pi" if not self.shift_on else "e")
+        insert(self.display, "pi" if not self.shift_held else "e")
 
     def root_btn(self, *_):
-        # √ ↔ ³√
-        insert(self.display, "sqrt(" if not self.shift_on else "cbrt(")
+        insert(self.display, "sqrt(" if not self.shift_held else "cbrt(")
 
     def square_cube_btn(self, *_):
-        # x^2 ↔ x^3  → **2 / **3
-        insert(self.display, "**2" if not self.shift_on else "**3")
+        insert(self.display, "²" if not self.shift_held else "³")
 
     def fact_pow_btn(self, *_):
-        # ! ↔ x^y
-        if not self.shift_on:
+        if not self.shift_held:
             if not wrap_last_atom(self.display, "factorial("):
-                insert(self.display, "factorial(")  # fallback
+                insert(self.display, "factorial(")
         else:
-            insert(self.display, "**")  
+            insert(self.display, "ʸ")
 
     def trig_btn(self, label, *_):
-        # sin/cos/tan ↔ asin/acos/atan
         insert(self.display, f"{label}(")
 
     def log_btn(self, *_):
-        if not self.shift_on:
+        if not self.shift_held:
             insert(self.display, "log10(")
         else:
             try:
-                val = simpledialog.askstring("log_b", "Value x:")
-                base = simpledialog.askstring("log_b", "Base b:")
+                val = simpledialog.askstring("logx()", "Value x:")
+                base = simpledialog.askstring("logx()", "Base b:")
                 if val is None or base is None:
                     return
                 float(val); float(base)
                 insert(self.display, f"log_b({val}, {base})")
             except Exception:
-                messagebox.showerror("Error", "숫자를 올바르게 입력하세요.")
-
+                messagebox.showerror("Error", "Enter valid numbers.")
+# edit
     def equals_btn(self, *_):
         expr = get_text(self.display)
+        expr = expr.replace("²", "**2").replace("³", "**3").replace("ʸ", "**")
         try:
             result = eval_safe(expr)
             set_text(self.display, str(result))
@@ -192,7 +202,6 @@ class CalcGUI:
             messagebox.showerror("Error", str(e))
 
     def eqn_btn(self, *_):
-        # Quadratic? (No = Cubic)
         ans = messagebox.askquestion("eqn", "Quadratic? (No = Cubic)")
         try:
             if ans == "yes":
