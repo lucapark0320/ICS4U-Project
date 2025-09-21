@@ -22,7 +22,7 @@ def sqrt(x: float) -> float:
     return math.sqrt(x)
 
 def cbrt(x: float) -> float:
-    """³√x (부호 보존)"""
+    """³√x"""
     return math.copysign(abs(x) ** (1/3), x)
 
 
@@ -49,7 +49,6 @@ def log10(x: float) -> float:
     return math.log10(x)
 
 def log_b(x: float, b: float) -> float:
-    """밑 b의 로그: log_b(x)"""
     return math.log(x, b)
 
 
